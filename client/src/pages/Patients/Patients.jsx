@@ -11,7 +11,7 @@ const Patients = () => {
 
   const fetchPatients = async () => {
     try {
-      const response = await patientApi.getAllPatients();
+      const response = await patientApi.getAllPatients({ limit: 100 });
       setPatients(response.data.patients || []);
     } catch (error) {
       console.error('Error fetching patients:', error);

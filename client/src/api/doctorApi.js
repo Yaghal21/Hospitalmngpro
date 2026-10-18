@@ -25,4 +25,14 @@ export const doctorApi = {
     const response = await apiClient.delete(`/doctors/${id}`);
     return response.data;
   },
+
+  getSpecializations: async () => {
+    const response = await apiClient.get('/doctors/specializations');
+    return response.data;
+  },
+
+  provisionDoctorAccount: async (id, data) => {
+    const response = await apiClient.post(`/doctors/${id}/provision`, data);
+    return response.data;
+  },
 };

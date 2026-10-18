@@ -33,7 +33,13 @@ const updateDoctorSchema = z.object({
   message: 'At least one field must be provided for update'
 });
 
+const provisionDoctorAccountSchema = z.object({
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().email('Invalid email address').optional()
+});
+
 module.exports = {
   createDoctorSchema,
-  updateDoctorSchema
+  updateDoctorSchema,
+  provisionDoctorAccountSchema
 };

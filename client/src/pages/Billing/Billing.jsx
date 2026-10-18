@@ -11,8 +11,11 @@ const Billing = () => {
 
   const fetchBills = async () => {
     try {
-      const response = isPatient ? await billApi.getMyBills() : await billApi.getAllBills();
-      setBills(response.data || response.data.bills || []);
+      const response = isPatient ? await billApi.getMyBills() : await billApi.getAllBills({ limit: 100 });
+      const billsList = Array.isArray(response?.data)
+        ? response.data
+        : (response?.data?.bills || []);
+      setBills(billsList);
     } catch (error) {
       console.error('Error fetching bills:', error);
     } finally {

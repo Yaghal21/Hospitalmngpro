@@ -19,7 +19,7 @@ router.get('/me', authenticate, authorize('patient'), getMyAppointments);
 router.get('/doctor', authenticate, authorize('doctor'), getDoctorAppointments);
 
 // Admin listing
-router.get('/', authenticate, getAllAppointments);
+router.get('/', authenticate, authorize('admin'), getAllAppointments);
 
 // Individual appointment access
 router.get('/:id', authenticate, getAppointmentById);

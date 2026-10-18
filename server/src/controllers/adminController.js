@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 
 /**
  * Get dashboard statistics
@@ -6,7 +6,7 @@ const { supabase } = require('../config/supabase');
 const getDashboardStats = async (req, res, next) => {
   try {
     // Try to use the existing view first
-    const { data: viewData, error: viewError } = await supabase
+    const { data: viewData, error: viewError } = await supabaseAdmin
       .from('hospital_dashboard_stats')
       .select('*')
       .single();
@@ -15,7 +15,17 @@ const getDashboardStats = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         message: 'Dashboard statistics retrieved successfully',
-        data: viewData
+        data: {
+          total_patients: Number(viewData.total_patients || 0),
+          total_doctors: Number(viewData.total_doctors || 0),
+          total_appointments: Number(viewData.total_appointments || 0),
+          today_appointments: Number(viewData.todays_appointments || 0),
+          todays_appointments: Number(viewData.todays_appointments || 0),
+          upcoming_or_booked_appointments: Number(viewData.upcoming_or_booked_appointments || 0),
+          pending_bills: Number(viewData.pending_bills || 0),
+          total_revenue: Number(viewData.total_paid_revenue || 0),
+          total_paid_revenue: Number(viewData.total_paid_revenue || 0)
+        }
       });
     }
 
@@ -28,15 +38,15 @@ const getDashboardStats = async (req, res, next) => {
       { count: pendingBills },
       { data: paidBills }
     ] = await Promise.all([
-      supabase.from('patients').select('*', { count: 'exact', head: true }),
-      supabase.from('doctors').select('*', { count: 'exact', head: true }),
-      supabase.from('appointments').select('*', { count: 'exact', head: true }),
-      supabase
+      supabaseAdmin.from('patients').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('doctors').select('*', { count: 'exact', head: true }),
+      supabaseAdmin.from('appointments').select('*', { count: 'exact', head: true }),
+      supabaseAdmin
         .from('appointments')
         .select('*', { count: 'exact', head: true })
         .eq('appointment_date', new Date().toISOString().split('T')[0]),
-      supabase.from('bills').select('*', { count: 'exact', head: true }).eq('payment_status', 'Pending'),
-      supabase
+      supabaseAdmin.from('bills').select('*', { count: 'exact', head: true }).eq('payment_status', 'Pending'),
+      supabaseAdmin
         .from('bills')
         .select('total_amount')
         .eq('payment_status', 'Paid')
@@ -52,8 +62,10 @@ const getDashboardStats = async (req, res, next) => {
         total_doctors: totalDoctors || 0,
         total_appointments: totalAppointments || 0,
         today_appointments: todayAppointments || 0,
+        todays_appointments: todayAppointments || 0,
         pending_bills: pendingBills || 0,
-        total_revenue: totalRevenue
+        total_revenue: totalRevenue,
+        total_paid_revenue: totalRevenue
       }
     });
   } catch (error) {
@@ -68,7 +80,7 @@ const getRecentAppointments = async (req, res, next) => {
   try {
     const { limit = 10 } = req.query;
 
-    const { data: appointments, error } = await supabase
+    const { data: appointments, error } = await supabaseAdmin
       .from('appointments')
       .select(`
         *,
@@ -80,7 +92,7 @@ const getRecentAppointments = async (req, res, next) => {
         patients!inner (
           id,
           patient_code,
-          profiles (
+          profiles:profile_id (
             full_name
           )
         )
@@ -114,7 +126,7 @@ const getRevenueStats = async (req, res, next) => {
   try {
     const { start_date, end_date } = req.query;
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('bills')
       .select('created_at, total_amount, payment_status')
       .eq('payment_status', 'Paid');
@@ -165,7 +177,7 @@ const getRevenueStats = async (req, res, next) => {
  */
 const getDoctorSummary = async (req, res, next) => {
   try {
-    const { data: doctors, error } = await supabase
+    const { data: doctors, error } = await supabaseAdmin
       .from('doctors')
       .select(`
         id,

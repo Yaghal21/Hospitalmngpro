@@ -14,6 +14,7 @@ const Appointments = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [bookingForm, setBookingForm] = useState({
     specialization: '',
+    doctor_id: '',
     appointment_date: '',
     appointment_time: '',
     reason: '',
@@ -27,17 +28,17 @@ const Appointments = () => {
       } else if (isDoctor) {
         appointmentsRes = await appointmentApi.getDoctorAppointments();
       } else {
-        appointmentsRes = await appointmentApi.getAllAppointments();
+        appointmentsRes = await appointmentApi.getAllAppointments({ limit: 100 });
       }
       
-      const doctorsRes = await doctorApi.getAllDoctors();
+      const doctorsRes = await doctorApi.getAllDoctors({ limit: 100 });
+      const doctorsList = doctorsRes?.data?.doctors || doctorsRes?.data || [];
       
-      console.log('[APPOINTMENTS] Doctors response:', doctorsRes);
-      
-      const doctorsList = doctorsRes?.data?.data?.doctors || doctorsRes?.data?.doctors || doctorsRes?.data || [];
-      console.log('[APPOINTMENTS] Doctors list:', doctorsList);
-      
-      setAppointments(appointmentsRes.data || appointmentsRes.data.appointments || []);
+      const aptsList = Array.isArray(appointmentsRes?.data)
+        ? appointmentsRes.data
+        : (appointmentsRes?.data?.appointments || []);
+
+      setAppointments(aptsList);
       setDoctors(doctorsList);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -53,26 +54,19 @@ const Appointments = () => {
   const handleBookAppointment = async (e) => {
     e.preventDefault();
     try {
-      // Find an available doctor from the selected specialization
-      const availableDoctor = doctors.find(d => 
-        d.specialization === bookingForm.specialization && d.is_available
-      );
-
-      if (!availableDoctor) {
-        toast.error('No available doctors in this specialization');
-        return;
-      }
-
-      await appointmentApi.createAppointment({
-        ...bookingForm,
-        doctor_id: availableDoctor.id
-      });
+      const payload = {
+        doctor_id: bookingForm.doctor_id,
+        appointment_date: bookingForm.appointment_date,
+        appointment_time: bookingForm.appointment_time,
+        reason: bookingForm.reason,
+      };
+      await appointmentApi.createAppointment(payload);
       toast.success('Appointment booked successfully');
       setShowBookingModal(false);
-      setBookingForm({ specialization: '', appointment_date: '', appointment_time: '', reason: '' });
+      setBookingForm({ specialization: '', doctor_id: '', appointment_date: '', appointment_time: '', reason: '' });
       fetchData();
     } catch (error) {
-      const message = error.response?.data?.message || 'Failed to book appointment';
+      const message = error.response?.data?.errors?.[0] || error.response?.data?.message || 'Failed to book appointment';
       toast.error(message);
     }
   };
@@ -253,25 +247,46 @@ const Appointments = () => {
                 </label>
                 <select
                   value={bookingForm.specialization}
-                  onChange={(e) => setBookingForm({ ...bookingForm, specialization: e.target.value })}
+                  onChange={(e) => {
+                    setBookingForm({ ...bookingForm, specialization: e.target.value, doctor_id: '' });
+                  }}
                   required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 >
                   <option value="">Choose a specialization</option>
-                  {(() => {
-                    const specializations = [...new Set(doctors.map(d => d.specialization))];
-                    console.log('[APPOINTMENTS] All specializations:', specializations);
-                    return specializations.map((spec) => (
-                      <option key={spec} value={spec}>
-                        {spec}
-                      </option>
-                    ));
-                  })()}
+                  {[...new Set(doctors.map(d => d.specialization))].map((spec) => (
+                    <option key={spec} value={spec}>
+                      {spec}
+                    </option>
+                  ))}
                 </select>
-                {doctors.length === 0 && (
-                  <p className="text-sm text-gray-500 mt-1">No doctors available</p>
-                )}
               </div>
+
+              {bookingForm.specialization && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Doctor
+                  </label>
+                  <select
+                    value={bookingForm.doctor_id}
+                    onChange={(e) => setBookingForm({ ...bookingForm, doctor_id: e.target.value })}
+                    required
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    <option value="">Choose a doctor</option>
+                    {doctors
+                      .filter(d => d.specialization === bookingForm.specialization && d.is_available)
+                      .map((doctor) => (
+                        <option key={doctor.id} value={doctor.id}>
+                          {doctor.full_name} - {doctor.qualification} - ₹{doctor.consultation_fee}
+                        </option>
+                      ))}
+                  </select>
+                  {doctors.filter(d => d.specialization === bookingForm.specialization && d.is_available).length === 0 && (
+                    <p className="text-sm text-gray-500 mt-1">No available doctors in this specialization</p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">

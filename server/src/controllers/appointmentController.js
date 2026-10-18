@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 const { createAppointmentSchema, updateStatusSchema, updateNotesSchema } = require('../validators/appointmentValidator');
 
 /**
@@ -9,8 +9,23 @@ const createAppointment = async (req, res, next) => {
     const validatedData = createAppointmentSchema.parse(req.body);
     const { doctor_id, appointment_date, appointment_time, reason } = validatedData;
 
+    // Verify the authenticated user has a patient record
+    const { data: patient, error: patientError } = await supabaseAdmin
+      .from('patients')
+      .select('id')
+      .eq('id', req.user.id)
+      .single();
+
+    if (patientError || !patient) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+        errors: ['No patient record found for this user. Please complete your patient profile first.']
+      });
+    }
+
     // Verify doctor exists and is available
-    const { data: doctor, error: doctorError } = await supabase
+    const { data: doctor, error: doctorError } = await supabaseAdmin
       .from('doctors')
       .select('*')
       .eq('id', doctor_id)
@@ -32,21 +47,21 @@ const createAppointment = async (req, res, next) => {
       });
     }
 
-    // Check if doctor is available on the appointment day
-    const appointmentDay = new Date(appointment_date).toLocaleDateString('en-US', { weekday: 'long' });
-    if (!doctor.available_days.includes(appointmentDay)) {
+    // Check if doctor is available on the appointment day (use UTC noon to avoid timezone shift)
+    const appointmentDay = new Date(appointment_date + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
+    if (doctor.available_days && !doctor.available_days.includes(appointmentDay)) {
       return res.status(400).json({
         success: false,
         message: 'Doctor not available on this day',
-        errors: [`Doctor is not available on ${appointmentDay}`]
+        errors: [`Doctor is not available on ${appointmentDay}. Available days: ${doctor.available_days.join(', ')}`]
       });
     }
 
     // Generate appointment code
     const appointmentCode = `APT${Date.now().toString().slice(-6)}`;
 
-    // Create appointment
-    const { data: appointment, error } = await supabase
+    // Create appointment using server-derived patient_id (never trust browser)
+    const { data: appointment, error } = await supabaseAdmin
       .from('appointments')
       .insert({
         appointment_code: appointmentCode,
@@ -108,7 +123,7 @@ const getMyAppointments = async (req, res, next) => {
   try {
     const { status } = req.query;
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('appointments')
       .select(`
         *,
@@ -154,7 +169,7 @@ const getAllAppointments = async (req, res, next) => {
   try {
     const { status, doctor_id, patient_id, page = 1, limit = 10 } = req.query;
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('appointments')
       .select(`
         *,
@@ -166,7 +181,7 @@ const getAllAppointments = async (req, res, next) => {
         patients!inner (
           id,
           patient_code,
-          profiles (
+          profiles:profile_id (
             full_name,
             phone
           )
@@ -224,22 +239,42 @@ const getDoctorAppointments = async (req, res, next) => {
   try {
     const { status } = req.query;
 
-    let query = supabase
+    // Resolve doctor record from the authenticated user's profile_id
+    // This is the correct way: doctors.profile_id = auth user UUID
+    const { data: doctor, error: doctorError } = await supabaseAdmin
+      .from('doctors')
+      .select('id')
+      .eq('profile_id', req.user.id)
+      .single();
+
+    if (doctorError || !doctor) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+        errors: ['No doctor record found for this user. Contact admin to link your account.']
+      });
+    }
+
+    // Use doctor.id (the actual doctor record ID) for the appointment lookup
+    let query = supabaseAdmin
       .from('appointments')
       .select(`
         *,
         patients!inner (
           id,
           patient_code,
-          profiles (
+          profiles:profile_id (
             full_name,
-            phone,
-            date_of_birth,
-            gender
+            phone
           )
+        ),
+        doctors:doctor_id (
+          id,
+          full_name,
+          specialization
         )
       `)
-      .eq('doctor_id', req.user.id)
+      .eq('doctor_id', doctor.id)
       .order('appointment_date', { ascending: false })
       .order('appointment_time', { ascending: false });
 
@@ -274,7 +309,7 @@ const getAppointmentById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const { data: appointment, error } = await supabase
+    const { data: appointment, error } = await supabaseAdmin
       .from('appointments')
       .select(`
         *,
@@ -305,9 +340,19 @@ const getAppointmentById = async (req, res, next) => {
     }
 
     // Check authorization
-    const isAdmin = req.user.profile.role === 'admin';
+    const role = req.user.role || req.user.profile?.role;
+    const isAdmin = role === 'admin';
     const isPatient = req.user.id === appointment.patient_id;
-    const isDoctor = req.user.profile.role === 'doctor' && req.user.id === appointment.doctor_id;
+    
+    let isDoctor = false;
+    if (role === 'doctor') {
+      const { data: doctorRecord } = await supabaseAdmin
+        .from('doctors')
+        .select('id')
+        .eq('profile_id', req.user.id)
+        .single();
+      isDoctor = Boolean(doctorRecord && doctorRecord.id === appointment.doctor_id);
+    }
 
     if (!isAdmin && !isPatient && !isDoctor) {
       return res.status(403).json({
@@ -337,7 +382,7 @@ const updateAppointmentStatus = async (req, res, next) => {
     const { status } = validatedData;
 
     // Get appointment
-    const { data: appointment, error: fetchError } = await supabase
+    const { data: appointment, error: fetchError } = await supabaseAdmin
       .from('appointments')
       .select('*')
       .eq('id', id)
@@ -352,9 +397,19 @@ const updateAppointmentStatus = async (req, res, next) => {
     }
 
     // Check authorization
-    const isAdmin = req.user.profile.role === 'admin';
+    const role = req.user.role || req.user.profile?.role;
+    const isAdmin = role === 'admin';
     const isPatient = req.user.id === appointment.patient_id;
-    const isDoctor = req.user.profile.role === 'doctor' && req.user.id === appointment.doctor_id;
+    
+    let isDoctor = false;
+    if (role === 'doctor') {
+      const { data: doctorRecord } = await supabaseAdmin
+        .from('doctors')
+        .select('id')
+        .eq('profile_id', req.user.id)
+        .single();
+      isDoctor = Boolean(doctorRecord && doctorRecord.id === appointment.doctor_id);
+    }
 
     // Patients can only cancel their own appointments
     if (isPatient && status !== 'Cancelled') {
@@ -383,7 +438,7 @@ const updateAppointmentStatus = async (req, res, next) => {
     }
 
     // Update status
-    const { data: updatedAppointment, error: updateError } = await supabase
+    const { data: updatedAppointment, error: updateError } = await supabaseAdmin
       .from('appointments')
       .update({ status })
       .eq('id', id)
@@ -426,7 +481,7 @@ const updateAppointmentNotes = async (req, res, next) => {
     const { doctor_notes } = validatedData;
 
     // Get appointment
-    const { data: appointment, error: fetchError } = await supabase
+    const { data: appointment, error: fetchError } = await supabaseAdmin
       .from('appointments')
       .select('*')
       .eq('id', id)
@@ -440,8 +495,14 @@ const updateAppointmentNotes = async (req, res, next) => {
       });
     }
 
-    // Check if user is the assigned doctor
-    if (req.user.id !== appointment.doctor_id) {
+    // Resolve authenticated doctor record
+    const { data: doctorRecord, error: doctorError } = await supabaseAdmin
+      .from('doctors')
+      .select('id')
+      .eq('profile_id', req.user.id)
+      .single();
+
+    if (doctorError || !doctorRecord || doctorRecord.id !== appointment.doctor_id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied',
@@ -450,7 +511,7 @@ const updateAppointmentNotes = async (req, res, next) => {
     }
 
     // Update notes
-    const { data: updatedAppointment, error: updateError } = await supabase
+    const { data: updatedAppointment, error: updateError } = await supabaseAdmin
       .from('appointments')
       .update({ doctor_notes })
       .eq('id', id)

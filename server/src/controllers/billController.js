@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 const { createBillSchema, updatePaymentSchema } = require('../validators/billValidator');
 
 /**
@@ -8,15 +8,16 @@ const getMyBills = async (req, res, next) => {
   try {
     const { payment_status } = req.query;
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('bills')
       .select(`
         *,
-        appointments:appointment_id (
+        appointments:appointment_id!inner (
           id,
           appointment_code,
           appointment_date,
           appointment_time,
+          patient_id,
           doctors:doctor_id (
             full_name,
             specialization
@@ -57,7 +58,7 @@ const getAllBills = async (req, res, next) => {
   try {
     const { payment_status, page = 1, limit = 10 } = req.query;
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('bills')
       .select(`
         *,
@@ -123,7 +124,7 @@ const getBillById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const { data: bill, error } = await supabase
+    const { data: bill, error } = await supabaseAdmin
       .from('bills')
       .select(`
         *,
@@ -131,6 +132,7 @@ const getBillById = async (req, res, next) => {
           id,
           appointment_code,
           appointment_date,
+          patient_id,
           doctors:doctor_id (
             full_name,
             specialization
@@ -157,8 +159,9 @@ const getBillById = async (req, res, next) => {
     }
 
     // Check authorization
-    const isAdmin = req.user.profile.role === 'admin';
-    const isPatient = req.user.id === bill.appointments.patients.id;
+    const role = req.user.role || req.user.profile?.role;
+    const isAdmin = role === 'admin';
+    const isPatient = req.user.id === bill.appointments?.patient_id || req.user.id === bill.appointments?.patients?.id;
 
     if (!isAdmin && !isPatient) {
       return res.status(403).json({
@@ -188,7 +191,7 @@ const createBill = async (req, res, next) => {
     const { appointment_id, consultation_charge, additional_charges, discount } = validatedData;
 
     // Verify appointment exists
-    const { data: appointment, error: appointmentError } = await supabase
+    const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
       .select('*')
       .eq('id', appointment_id)
@@ -203,7 +206,7 @@ const createBill = async (req, res, next) => {
     }
 
     // Check if bill already exists for this appointment
-    const { data: existingBill, error: checkError } = await supabase
+    const { data: existingBill, error: checkError } = await supabaseAdmin
       .from('bills')
       .select('id')
       .eq('appointment_id', appointment_id)
@@ -221,7 +224,7 @@ const createBill = async (req, res, next) => {
     const invoiceNumber = `INV${Date.now().toString().slice(-6)}`;
 
     // Create bill (total_amount will be calculated by PostgreSQL)
-    const { data: bill, error } = await supabase
+    const { data: bill, error } = await supabaseAdmin
       .from('bills')
       .insert({
         invoice_number: invoiceNumber,
@@ -270,7 +273,7 @@ const updateBillPayment = async (req, res, next) => {
     const { payment_status, payment_method } = validatedData;
 
     // Get bill
-    const { data: bill, error: fetchError } = await supabase
+    const { data: bill, error: fetchError } = await supabaseAdmin
       .from('bills')
       .select('*')
       .eq('id', id)
@@ -299,7 +302,7 @@ const updateBillPayment = async (req, res, next) => {
     }
 
     // Update bill
-    const { data: updatedBill, error: updateError } = await supabase
+    const { data: updatedBill, error: updateError } = await supabaseAdmin
       .from('bills')
       .update(updateData)
       .eq('id', id)

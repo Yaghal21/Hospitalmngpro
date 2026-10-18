@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 const Dashboard = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isDoctor } = useAuth();
   const [stats, setStats] = useState(null);
   const [recentAppointments, setRecentAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,10 +170,14 @@ const Dashboard = () => {
       {!isAdmin && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="text-center py-8">
-            <TrendingUp className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Patient Dashboard</h3>
-            <p className="text-gray-600">
-              Use the navigation menu to book appointments, view your history, and manage your profile.
+            <TrendingUp className="w-12 h-12 text-primary-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {isDoctor ? 'Doctor Dashboard' : 'Patient Dashboard'}
+            </h3>
+            <p className="text-gray-600 max-w-md mx-auto">
+              {isDoctor 
+                ? 'Welcome to your doctor portal. Navigate to Appointments to review your scheduled patient consultations and update status.'
+                : 'Welcome to your patient portal. Navigate to Appointments to book a consultation with our medical specialists, view status, or manage bookings.'}
             </p>
           </div>
         </div>

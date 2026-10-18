@@ -10,7 +10,7 @@ const Doctors = () => {
 
   const fetchDoctors = async () => {
     try {
-      const response = await doctorApi.getAllDoctors();
+      const response = await doctorApi.getAllDoctors({ limit: 100 });
       setDoctors(response.data.doctors || []);
     } catch (error) {
       console.error('Error fetching doctors:', error);
