@@ -20,7 +20,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const menuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'doctor', 'patient'] },
     { path: '/patients', icon: Users, label: 'Patients', roles: ['admin'] },
-    { path: '/doctors', icon: UserPlus, label: 'Doctors', roles: ['admin', 'patient'] },
+    { path: '/doctors', icon: UserPlus, label: 'Doctors', roles: ['admin', 'doctor', 'patient'] },
     { path: '/appointments', icon: Calendar, label: 'Appointments', roles: ['admin', 'doctor', 'patient'] },
     { path: '/billing', icon: FileText, label: 'Billing', roles: ['admin', 'patient'] },
   ];
